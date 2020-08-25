@@ -1,28 +1,72 @@
+import torch
+import torch.nn as nn
+import torchvision
+import torchvision.transforms as transforms
 import torch.nn.functional as F
-
-from homura import callbacks, lr_scheduler, optim, reporters
-from homura.trainers import SupervisedTrainer as Trainer
-from homura.vision import DATASET_REGISTRY
+import torch.optim as optim
 from senet.baseline import resnet20
 from senet.se_resnet import se_resnet20
 
 
 def main():
-    train_loader, test_loader = DATASET_REGISTRY("cifar10")(args.batch_size, num_workers=args.num_workers)
 
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    # Assuming that we are on a CUDA machine, this should print a CUDA device:
+
+    print(device)
+
+    transform = transforms.Compose(
+    [transforms.ToTensor(),
+     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+
+    trainset = torchvision.datasets.CIFAR10(root='./data', train=True,
+                                            download=True, transform=transform)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=4,
+                                            shuffle=True, num_workers=2)
+
+    testset = torchvision.datasets.CIFAR10(root='./data', train=False,
+                                        download=True, transform=transform)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=4,
+                                            shuffle=False, num_workers=2)
+
+    classes = ('plane', 'car', 'bird', 'cat',
+            'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+   
     if args.baseline:
-        model = resnet20()
+        model = resnet20().to(device)
     else:
         model = se_resnet20(num_classes=10, reduction=args.reduction)
 
-    optimizer = optim.SGD(lr=1e-1, momentum=0.9, weight_decay=1e-4)
-    scheduler = lr_scheduler.StepLR(80, 0.1)
-    tqdm_rep = reporters.TQDMReporter(range(args.epochs))
-    _callbacks = [tqdm_rep, callbacks.AccuracyCallback()]
-    with Trainer(model, optimizer, F.cross_entropy, scheduler=scheduler, callbacks=_callbacks) as trainer:
-        for _ in tqdm_rep:
-            trainer.train(train_loader)
-            trainer.test(test_loader)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+
+
+
+    for epoch in range(2):  # loop over the dataset multiple times
+        print(f"Start training epoch {epoch}")
+        running_loss = 0.0
+        for i, data in enumerate(trainloader, 0):
+            # get the inputs; data is a list of [inputs, labels]
+            inputs, labels = data[0].to(device), data[1].to(device)
+
+            # zero the parameter gradients
+            optimizer.zero_grad()
+
+            # forward + backward + optimize
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+
+            # print statistics
+            running_loss += loss.item()
+            if i % 2000 == 1999:    # print every 2000 mini-batches
+                print('[%d, %5d] loss: %.3f' %
+                    (epoch + 1, i + 1, running_loss / 2000))
+                running_loss = 0.0
+
+    print('Finished Training')
 
 
 if __name__ == "__main__":
