@@ -36,7 +36,7 @@ def main():
     if args.baseline:
         model = resnet20().to(device)
     else:
-        model = se_resnet20(num_classes=10, reduction=args.reduction)
+        model = se_resnet20(num_classes=10, reduction=args.reduction).to(device)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
@@ -67,6 +67,19 @@ def main():
                 running_loss = 0.0
 
     print('Finished Training')
+
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for data in testloader:
+            inputs, labels = data[0].to(device), data[1].to(device)
+            outputs = model(images)
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+    print('Accuracy of the network on the 10000 test images: %d %%' % (
+        100 * correct / total))
 
 
 if __name__ == "__main__":
